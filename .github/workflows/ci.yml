@@ -48,6 +48,10 @@ jobs:
       - name: Lint, test, and build (host)
         run: pixi run ci
 
+      - name: Test csv-kernel
+        if: runner.os == 'Linux'
+        run: pixi run -e kernel test-kernel
+
       - name: Build and package csv-ls for all targets
         run: |
           mkdir -p dist

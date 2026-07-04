@@ -89,16 +89,50 @@ x86_64/aarch64 (cargo-driven; the bash-based pixi tasks make Windows a
 compile-target rather than a pixi dev platform) — so you can grab a binary
 from the latest Actions run instead of building locally.
 
+## Inline table view via csv-kernel (optional)
+
+Zed has no extension API for custom panes, but its REPL natively renders
+Jupyter `application/vnd.dataresource+json` output as an inline table
+(`crates/repl/src/outputs/table.rs` — its highest-ranked output type).
+`csv-kernel/csv_kernel.py` is a tiny Jupyter kernel that exploits this:
+"executing" CSV text replies with exactly that MIME type, so Zed draws a
+real table below your selection. Read-only — Zed's table widget has no
+editing/sorting hooks — but it's a genuine table GUI without forking Zed.
+
+Setup:
+
+```sh
+pixi run -e kernel install-kernel
+```
+
+This installs four kernelspecs (`csv`, `tsv`, `ssv`, `psv`) into the
+standard Jupyter location (`~/Library/Jupyter/kernels` on macOS,
+`~/.local/share/jupyter/kernels` on Linux), pointing at this repo's pixi
+`kernel` environment — don't move/delete the repo afterwards, or rerun the
+task after moving.
+
+Usage: open a CSV file in Zed, select the rows you want (include the header;
+`cmd-a` for the whole file), then run `repl: run` (`ctrl-shift-enter`). The
+table appears inline; `repl: clear outputs` removes it. Zed auto-matches the
+kernel because each kernelspec's `language` equals the Zed language name; if
+you have several kernels per language, pin it in Zed settings:
+
+```json
+{ "jupyter": { "kernel_selections": { "csv": "csv" } } }
+```
+
+Note on flags: the REPL is generally available and needs **no** feature
+flag or environment variable. What *is* gated is Zed's separate native
+`.ipynb` notebook UI, behind the `notebooks` feature flag — today toggled in
+settings (`{ "feature_flags": { "notebooks": "on" } }`), not by env var
+(`ZED_DISABLE_STAFF` exists but only force-disables staff flags). That
+notebook UI is unrelated to this kernel and not extension-accessible.
+
 ## Roadmap ideas (deliberately not yet included)
 
 - Completions of values already present in the current column.
 - Code actions: normalize quoting, trim whitespace, transpose header case.
 - Document symbols for header navigation.
-- A read-only table *view* via Zed's REPL: Zed natively renders
-  `application/vnd.dataresource+json` Jupyter output as a table
-  (`crates/repl/src/outputs/table.rs`), so a small Jupyter kernel that
-  parses CSV and emits that MIME type would display tables inline —
-  no Zed fork required.
 
 ## License
 

@@ -37,3 +37,18 @@ test = { cmd = "cargo test --workspace", depends-on = ["bootstrap-rust"] }
 fmt = { cmd = "cargo fmt --all", depends-on = ["bootstrap-rust"] }
 lint = { cmd = "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings", depends-on = ["bootstrap-rust"] }
 ci = { depends-on = ["lint", "test", "build"] }
+
+# Optional Jupyter kernel that renders CSV as inline tables in Zed's REPL.
+# Lives in its own environment so the default env stays rust-only:
+#   pixi run -e kernel install-kernel
+[feature.kernel.dependencies]
+python = ">=3.11"
+ipykernel = ">=6"
+jupyter_client = ">=8"
+
+[feature.kernel.tasks]
+install-kernel = "bash scripts/install-kernel.sh"
+test-kernel = "python csv-kernel/test_kernel.py"
+
+[environments]
+kernel = ["kernel"]
