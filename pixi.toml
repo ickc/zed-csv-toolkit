@@ -5,7 +5,10 @@ name = "zed-csv-toolkit"
 platforms = ["linux-64", "osx-arm64", "osx-64"]
 version = "0.1.0"
 
+# bash is genuinely used by the tasks below, and a non-empty dependency list
+# keeps setup-pixi's post-install `pixi list --locked` from erroring in CI.
 [dependencies]
+bash = "*"
 
 # Rust comes from the system rustup (~/.rustup, ~/.cargo). Pin the toolchain
 # via env var instead of mutating the user's `rustup default`, and make sure
