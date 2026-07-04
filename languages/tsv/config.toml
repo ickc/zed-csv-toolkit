@@ -1,0 +1,5 @@
+name = "TSV"
+grammar = "tsv"
+path_suffixes = ["tsv", "tab"]
+# The delimiter is a literal tab; never expand to spaces.
+hard_tabs = true

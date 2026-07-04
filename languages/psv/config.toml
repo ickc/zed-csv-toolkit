@@ -1,0 +1,3 @@
+name = "PSV"
+grammar = "psv"
+path_suffixes = ["psv"]

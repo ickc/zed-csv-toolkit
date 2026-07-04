@@ -1,0 +1,5 @@
+name = "SSV"
+grammar = "ssv"
+# Semicolon-separated values have no dedicated suffix in the wild; assign
+# files to this language manually in Zed for semicolon-delimited .csv files.
+path_suffixes = ["ssv"]
