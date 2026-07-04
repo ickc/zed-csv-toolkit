@@ -23,6 +23,21 @@ def run_kernel_case(kernel_name: str, text: str):
     kc.start_channels()
     try:
         kc.wait_for_ready(timeout=60)
+        # Zed's runtimelib deserializes kernel_info_reply strictly; these
+        # fields are required (missing language_info.version broke Zed).
+        kc.kernel_info()
+        info = kc.get_shell_msg(timeout=30)["content"]
+        assert info["protocol_version"], info
+        for field in ("name", "version"):
+            assert info["language_info"].get(field), (field, info)
+        # Drain this request's iopub busy/idle before executing.
+        while True:
+            msg = kc.get_iopub_msg(timeout=30)
+            if (
+                msg["msg_type"] == "status"
+                and msg["content"]["execution_state"] == "idle"
+            ):
+                break
         kc.execute(text)
         outputs = []
         while True:

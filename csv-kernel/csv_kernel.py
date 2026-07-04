@@ -96,8 +96,11 @@ class CsvKernel(Kernel):
     implementation = "csv-kernel"
     implementation_version = "0.1.0"
     banner = "csv-kernel: renders delimiter-separated values as tables"
+    # "version" is required by strict clients (Zed's runtimelib fails to
+    # deserialize kernel_info_reply without language_info.version).
     language_info = {
         "name": os.environ.get("CSV_KERNEL_LANGUAGE", "csv"),
+        "version": "rfc4180",
         "mimetype": "text/csv",
         "file_extension": ".csv",
     }
