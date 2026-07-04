@@ -26,6 +26,14 @@ servers. There is no API for custom panes or views, so a VSCode-style
 spreadsheet editor is not possible in any Zed extension today. If Zed ever
 grows such an API, this repo is the natural place to add it.
 
+**Relationship to the rainbow grammar.** `coroa/rainbow-csv-tree-sitter` is
+a standalone tree-sitter *grammar* repository (a fork of
+`Kalmaegi/rainbow-csv-tree-sitter`), not a Zed extension. Zed clones it at
+the pinned commit and compiles it to WASM itself; nothing from it is vendored
+here or linked into `csv-ls`. The entire coupling surface is the grammar
+names in `extension.toml` plus the seven node names (`first`…`seventh`)
+referenced by `languages/*/highlights.scm`.
+
 **Why one extension, not several?** The grammar and the language server are
 complementary and share the language definitions (`languages/*/config.toml`);
 Zed has no extension-bundle concept, and splitting would only multiply
@@ -74,16 +82,23 @@ Binary resolution order for the language server:
 3. Download from this repo's GitHub releases (`csv-ls-<target>.tar.gz`,
    published by CI on `v*` tags). This only works while the repo is public.
 
-CI (GitHub Actions, Linux + macOS arm64) runs `pixi run ci` and uploads the
-`csv-ls` binaries and the extension WASM as artifacts; you can grab a mac
-binary from the latest Actions run instead of building locally.
+CI (GitHub Actions) runs `pixi run ci` on Linux and macOS and uploads the
+extension WASM plus `csv-ls` binaries for six targets — Linux x86_64/aarch64,
+macOS arm64/x86_64 (cross-compiled on the same runners), and Windows
+x86_64/aarch64 (cargo-driven; the bash-based pixi tasks make Windows a
+compile-target rather than a pixi dev platform) — so you can grab a binary
+from the latest Actions run instead of building locally.
 
 ## Roadmap ideas (deliberately not yet included)
 
 - Completions of values already present in the current column.
 - Code actions: normalize quoting, trim whitespace, transpose header case.
 - Document symbols for header navigation.
-- `x86_64-apple-darwin` and Windows release binaries.
+- A read-only table *view* via Zed's REPL: Zed natively renders
+  `application/vnd.dataresource+json` Jupyter output as a table
+  (`crates/repl/src/outputs/table.rs`), so a small Jupyter kernel that
+  parses CSV and emits that MIME type would display tables inline —
+  no Zed fork required.
 
 ## License
 

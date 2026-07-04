@@ -2,7 +2,9 @@
 authors = ["Kolen Cheung <10970208+ickc@users.noreply.github.com>"]
 channels = ["conda-forge"]
 name = "zed-csv-toolkit"
-platforms = ["linux-64", "osx-arm64", "osx-64"]
+# win-64 is a compilation target (see CI), not a pixi dev platform: the
+# tasks are bash-based. Add it later via m2-bash if Windows dev is needed.
+platforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64"]
 version = "0.1.0"
 
 # bash is genuinely used by the tasks below, and a non-empty dependency list

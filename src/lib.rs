@@ -56,7 +56,13 @@ impl CsvToolkitExtension {
             (zed::Os::Mac, zed::Architecture::X8664) => "x86_64-apple-darwin",
             (zed::Os::Linux, zed::Architecture::X8664) => "x86_64-unknown-linux-gnu",
             (zed::Os::Linux, zed::Architecture::Aarch64) => "aarch64-unknown-linux-gnu",
+            (zed::Os::Windows, zed::Architecture::X8664) => "x86_64-pc-windows-msvc",
+            (zed::Os::Windows, zed::Architecture::Aarch64) => "aarch64-pc-windows-msvc",
             other => return Err(format!("unsupported platform: {other:?}")),
+        };
+        let bin_name = match platform {
+            zed::Os::Windows => format!("{SERVER_BIN}.exe"),
+            _ => SERVER_BIN.to_string(),
         };
         // Version-less asset names keep the release workflow simple; the
         // version is tracked by the cache directory below instead.
@@ -68,7 +74,7 @@ impl CsvToolkitExtension {
             .ok_or_else(|| format!("release {} has no asset {asset_name}", release.version))?;
 
         let version_dir = format!("{SERVER_BIN}-{}", release.version);
-        let binary_path = format!("{version_dir}/{SERVER_BIN}");
+        let binary_path = format!("{version_dir}/{bin_name}");
 
         if !std::fs::metadata(&binary_path).is_ok_and(|m| m.is_file()) {
             zed::set_language_server_installation_status(
