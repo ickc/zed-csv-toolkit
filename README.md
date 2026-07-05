@@ -89,27 +89,27 @@ x86_64/aarch64 (cargo-driven; the bash-based pixi tasks make Windows a
 compile-target rather than a pixi dev platform) — so you can grab a binary
 from the latest Actions run instead of building locally.
 
-## Inline table view via csv-kernel (optional)
+## Inline table view (Jupyter kernel built into csv-ls)
 
 Zed has no extension API for custom panes, but its REPL natively renders
 Jupyter `application/vnd.dataresource+json` output as an inline table
 (`crates/repl/src/outputs/table.rs` — its highest-ranked output type).
-`csv-kernel/csv_kernel.py` is a tiny Jupyter kernel that exploits this:
-"executing" CSV text replies with exactly that MIME type, so Zed draws a
-real table below your selection. Read-only — Zed's table widget has no
-editing/sorting hooks — but it's a genuine table GUI without forking Zed.
+`csv-ls` doubles as a tiny Jupyter kernel that exploits this: "executing"
+CSV text replies with exactly that MIME type, so Zed draws a real table
+below your selection. Read-only — Zed's table widget has no editing/sorting
+hooks — but it's a genuine table GUI without forking Zed.
 
-Setup:
-
-```sh
-pixi run -e kernel install-kernel
-```
-
-This installs four kernelspecs (`csv`, `tsv`, `ssv`, `psv`) into the
-standard Jupyter location (`~/Library/Jupyter/kernels` on macOS,
-`~/.local/share/jupyter/kernels` on Linux), pointing at this repo's pixi
-`kernel` environment — don't move/delete the repo afterwards, or rerun the
-task after moving.
+Setup: **none**. The kernel is built into `csv-ls` itself (`csv-ls kernel`,
+implementing the Jupyter wire protocol in Rust — no Python, no ipykernel).
+Whenever the language server starts (i.e. the first time you open a CSV
+file), it installs/refreshes four kernelspecs (`csv`, `tsv`, `ssv`, `psv`)
+in the standard Jupyter location (`~/Library/Jupyter/kernels` on macOS,
+`~/.local/share/jupyter/kernels` on Linux, `%APPDATA%\jupyter\kernels` on
+Windows), pointing at its own binary — so the specs heal themselves when
+the binary moves, e.g. across extension updates. Kernelspecs it didn't
+generate (no `"metadata": {"generated_by": "csv-ls"}`) are never touched.
+To opt out, set `CSV_LS_NO_KERNELSPECS=1` in the server's environment, or
+remove the spec directories with `jupyter kernelspec remove csv tsv ssv psv`.
 
 Usage: open a CSV file in Zed, select the rows you want (include the header;
 `cmd-a` for the whole file), then run `repl: run` (`ctrl-shift-enter`). The
@@ -121,12 +121,81 @@ you have several kernels per language, pin it in Zed settings:
 { "jupyter": { "kernel_selections": { "csv": "csv" } } }
 ```
 
+### One-keystroke "preview"
+
+Zed has no preview pane API for extensions (markdown/SVG previews are
+built-in features), so the closest thing to "preview this CSV" is a
+keybinding that chains select-all + run + deselect via
+`workspace::SendKeystrokes`:
+
+```json
+[
+  {
+    "context": "Editor && extension == csv",
+    "bindings": {
+      "ctrl-alt-p": ["workspace::SendKeystrokes", "cmd-a ctrl-shift-enter escape"]
+    }
+  }
+]
+```
+
+(on Linux use `ctrl-a`; duplicate the block with `extension == tsv` etc.
+as needed). Extensions cannot ship keybindings, so this stays a
+copy-paste snippet.
+
+### Markdown preview of a table
+
+The REPL table and Zed's markdown preview render differently (the preview
+wraps text, for one), so both views are worth having. Instead of the manual
+chain (open table → copy → new buffer → paste → set language → preview),
+`csv-ls markdown <file>` renders the file as a GFM pipe table directly —
+same escaping as the table widget's copy button — and `--temp` writes it to
+a stable `<stem>.md` in the system temp dir and prints the path. Wire it up
+as a Zed task plus a keybinding (`zed` here is Zed's CLI, `cli: install`
+from the command palette on macOS):
+
+```json
+// tasks.json
+{
+  "label": "csv: markdown preview",
+  "command": "zed \"$(csv-ls markdown --temp \"$ZED_FILE\")\"",
+  "reveal": "never",
+  "hide": "always"
+}
+```
+
+```json
+// keymap.json
+{
+  "context": "Editor && extension == csv",
+  "bindings": {
+    "ctrl-alt-m": ["task::Spawn", { "task_name": "csv: markdown preview" }]
+  }
+}
+```
+
+One keystroke opens the markdown buffer; your usual `markdown: open
+preview` key does the rest (a task cannot press it for you — the buffer
+opens asynchronously, so a `SendKeystrokes` chain would fire too early).
+Re-running the task rewrites the same temp file and Zed reloads the open
+buffer, so the preview stays one keystroke away as the CSV evolves.
+
+### What the table view can(not) do
+
+The rendering is Zed's own widget (`crates/repl/src/outputs/table.rs`),
+which the kernel cannot influence beyond the data it sends: columns
+autosize to their widest cell, long cells make the table scroll
+horizontally (no wrapping), and there is no sorting, column resizing, or
+other interaction — only copy, which yields a markdown table (or use
+`csv-ls markdown`, above, which produces the same thing without the mouse).
+
 Note on flags: the REPL is generally available and needs **no** feature
-flag or environment variable. What *is* gated is Zed's separate native
-`.ipynb` notebook UI, behind the `notebooks` feature flag — today toggled in
-settings (`{ "feature_flags": { "notebooks": "on" } }`), not by env var
-(`ZED_DISABLE_STAFF` exists but only force-disables staff flags). That
-notebook UI is unrelated to this kernel and not extension-accessible.
+flag or environment variable. What *is* gated (dev builds via
+`LOCAL_NOTEBOOK_DEV=1`, or the staff `notebooks` feature flag) is Zed's
+separate native `.ipynb` notebook UI. That UI is hardcoded to `.ipynb`
+files and has no extension hook, so a CSV cannot be opened "as a notebook";
+this kernel-through-the-REPL route is the only table view available to an
+extension today.
 
 ## Roadmap ideas (deliberately not yet included)
 

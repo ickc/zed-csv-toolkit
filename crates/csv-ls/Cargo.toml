@@ -7,6 +7,13 @@ description = "A lightweight language server for delimiter-separated values (CSV
 publish = false
 
 [dependencies]
+bytes = "1.12.0"
+hmac = "0.13.0"
 lsp-server = "0.8"
 lsp-types = "0.97"
-serde_json = "1"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.11.0"
+tokio = { version = "1.52.3", features = ["macros", "rt"] }
+uuid = { version = "1.23.4", features = ["v4"] }
+zeromq = { version = "0.6.0", features = ["tokio"] }

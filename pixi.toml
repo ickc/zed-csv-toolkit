@@ -39,16 +39,15 @@ lint = { cmd = "cargo fmt --all --check && cargo clippy --workspace --all-target
 ci = { depends-on = ["lint", "test", "build"] }
 
 # Optional Jupyter kernel that renders CSV as inline tables in Zed's REPL.
-# Lives in its own environment so the default env stays rust-only:
-#   pixi run -e kernel install-kernel
+# The kernel itself is built into csv-ls (see crates/csv-ls/src/kernel.rs);
+# this environment only provides jupyter_client to drive the integration
+# test against the real built binary.
 [feature.kernel.dependencies]
 python = ">=3.11"
-ipykernel = ">=6"
 jupyter_client = ">=8"
 
 [feature.kernel.tasks]
-install-kernel = "bash scripts/install-kernel.sh"
-test-kernel = "python csv-kernel/test_kernel.py"
+test-kernel = { cmd = "python csv-kernel/test_kernel.py", depends-on = ["build-lsp"] }
 
 [environments]
 kernel = ["kernel"]
