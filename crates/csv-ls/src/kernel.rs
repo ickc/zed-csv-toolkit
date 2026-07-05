@@ -11,18 +11,25 @@
 use std::path::Path;
 
 use bytes::Bytes;
+use futures_util::StreamExt;
 use hmac::{Hmac, KeyInit, Mac};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::Sha256;
 use uuid::Uuid;
 use zeromq::prelude::*;
-use zeromq::{PubSocket, RepSocket, RouterSocket, ZmqMessage};
+use zeromq::{PubSocket, RepSocket, RouterSocket, SocketEvent, ZmqMessage};
 
 use crate::table;
 use crate::time;
 
 type Error = Box<dyn std::error::Error + Sync + Send>;
+
+/// Kernel activity goes to stderr, which Zed captures into its own log —
+/// `zed: open log` then shows exactly which messages reached the kernel.
+fn log(msg: &str) {
+    eprintln!("csv-kernel: {msg}");
+}
 
 const PROTOCOL_VERSION: &str = "5.3";
 const DELIM: &[u8] = b"<IDS|MSG>";
@@ -182,6 +189,7 @@ async fn publish(
     msg_type: &str,
     content: Value,
 ) -> Result<(), Error> {
+    log(&format!("iopub publish: {msg_type}"));
     let header = make_header(session, msg_type);
     let topic = [Bytes::from(msg_type.as_bytes().to_vec())];
     let msg = build_message(&topic, key, &header, parent_header, &content);
@@ -236,6 +244,7 @@ async fn handle_shell(
     execution_count: &mut u64,
     incoming: Incoming,
 ) -> Result<(), Error> {
+    log(&format!("shell request: {}", incoming.msg_type()));
     publish_status(iopub, key, session, &incoming.header, "busy").await?;
 
     match incoming.msg_type() {
@@ -315,6 +324,7 @@ async fn handle_control(
     session: &str,
     incoming: Incoming,
 ) -> Result<bool, Error> {
+    log(&format!("control request: {}", incoming.msg_type()));
     publish_status(iopub, key, session, &incoming.header, "busy").await?;
 
     let mut shutdown = false;
@@ -378,17 +388,35 @@ async fn run_async(connection_file: &Path) -> Result<(), Error> {
     let mut stdin_sock = RouterSocket::new();
     stdin_sock.bind(&endpoint(&conn, conn.stdin_port)).await?;
     let mut iopub = PubSocket::new();
+    let mut iopub_monitor = iopub.monitor();
     iopub.bind(&endpoint(&conn, conn.iopub_port)).await?;
     let mut hb = RepSocket::new();
     hb.bind(&endpoint(&conn, conn.hb_port)).await?;
+    log("sockets bound, waiting for an iopub subscriber");
 
-    // PUB/SUB slow-joiner grace period: Zed sends kernel_info and the first
-    // (queued) execute_request immediately after its sockets connect, without
-    // waiting for the iopub subscription handshake to reach this PUB socket.
-    // Anything published before that handshake lands is silently dropped —
-    // the first `repl: run` would show no table. Requests queue in the shell
-    // socket meanwhile, so this only delays the first reply.
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // PUB/SUB slow joiner: Zed sends kernel_info and the first (queued)
+    // execute_request as soon as its sockets connect, without waiting for
+    // the iopub subscription handshake to reach this PUB socket — anything
+    // published before that is silently dropped, and the first `repl: run`
+    // would show no table. Hold off processing (requests queue in the shell
+    // socket meanwhile) until a peer actually connects to iopub, plus a
+    // beat for its subscription frame; the timeout keeps a subscriber-less
+    // client from hanging the kernel forever.
+    let accepted = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while let Some(event) = iopub_monitor.next().await {
+            if matches!(event, SocketEvent::Accepted(..)) {
+                return true;
+            }
+        }
+        false
+    })
+    .await;
+    match accepted {
+        Ok(true) => log("iopub subscriber connected"),
+        Ok(false) => log("iopub monitor closed without a subscriber"),
+        Err(_) => log("no iopub subscriber within 10s; proceeding"),
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     let heartbeat = tokio::spawn(async move {
         // A REP socket's send() re-attaches the envelope recv() stripped,

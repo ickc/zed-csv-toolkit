@@ -1,6 +1,6 @@
 [package]
 name = "csv-ls"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 license = "MIT"
 description = "A lightweight language server for delimiter-separated values (CSV/TSV/SSV/PSV)."
@@ -8,6 +8,7 @@ publish = false
 
 [dependencies]
 bytes = "1.12.0"
+futures-util = { version = "0.3", default-features = false }
 hmac = "0.13.0"
 lsp-server = "0.8"
 lsp-types = "0.97"

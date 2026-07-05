@@ -1,6 +1,6 @@
 id = "csv-toolkit"
 name = "CSV Toolkit"
-version = "0.2.1"
+version = "0.2.2"
 schema_version = 1
 authors = ["Kolen Cheung <10970208+ickc@users.noreply.github.com>"]
 description = "Rainbow column highlighting for CSV/TSV/SSV/PSV plus a lightweight language server: ragged-row diagnostics and column-aware hover."
