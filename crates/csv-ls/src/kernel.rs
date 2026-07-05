@@ -382,6 +382,14 @@ async fn run_async(connection_file: &Path) -> Result<(), Error> {
     let mut hb = RepSocket::new();
     hb.bind(&endpoint(&conn, conn.hb_port)).await?;
 
+    // PUB/SUB slow-joiner grace period: Zed sends kernel_info and the first
+    // (queued) execute_request immediately after its sockets connect, without
+    // waiting for the iopub subscription handshake to reach this PUB socket.
+    // Anything published before that handshake lands is silently dropped —
+    // the first `repl: run` would show no table. Requests queue in the shell
+    // socket meanwhile, so this only delays the first reply.
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
     let heartbeat = tokio::spawn(async move {
         // A REP socket's send() re-attaches the envelope recv() stripped,
         // so this is a verbatim echo with no extra bookkeeping.

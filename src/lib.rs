@@ -99,6 +99,18 @@ impl CsvToolkitExtension {
             }
         }
 
+        // Maintain a versionless alias (work/csv-toolkit/bin/csv-ls) for use
+        // from outside Zed — e.g. the markdown-preview task in the README —
+        // so user config doesn't have to hardcode the release version.
+        // Remove-then-copy avoids ETXTBSY if the old copy is running.
+        let stable_path = format!("bin/{bin_name}");
+        if std::fs::create_dir_all("bin").is_ok() {
+            let _ = std::fs::remove_file(&stable_path);
+            if std::fs::copy(&binary_path, &stable_path).is_ok() {
+                let _ = zed::make_file_executable(&stable_path);
+            }
+        }
+
         self.cached_binary_path = Some(binary_path.clone());
         Ok(binary_path)
     }

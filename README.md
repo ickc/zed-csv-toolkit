@@ -154,39 +154,56 @@ chain (open table → copy → new buffer → paste → set language → preview
 same escaping as the table widget's copy button — and `--temp` writes it to
 a stable `<stem>.md` in the system temp dir and prints the path. Wire it up
 as a Zed task plus a keybinding (`zed` here is Zed's CLI, `cli: install`
-from the command palette on macOS):
+from the command palette on macOS).
+
+The task first tries `csv-ls` on PATH, then falls back to the versionless
+alias the extension maintains next to its downloaded binaries
+(`…/extensions/work/csv-toolkit/bin/csv-ls`), so nothing version-specific
+is hardcoded. macOS:
 
 ```json
 // tasks.json
 {
   "label": "csv: markdown preview",
-  "command": "zed \"$(csv-ls markdown --temp \"$ZED_FILE\")\"",
+  "command": "b=$(command -v csv-ls) || b=\"$HOME/Library/Application Support/Zed/extensions/work/csv-toolkit/bin/csv-ls\"; zed \"$(\"$b\" markdown --temp \"$ZED_FILE\")\"",
   "reveal": "never",
   "hide": "always"
 }
 ```
 
+On Linux the fallback is
+`${XDG_DATA_HOME:-$HOME/.local/share}/zed/extensions/work/csv-toolkit/bin/csv-ls`.
+(If you point Zed at csv-ls via the `lsp.csv-ls.binary.path` setting, the
+alias is not created — use that same path here.)
+
 ```json
 // keymap.json
-{
-  "context": "Editor && extension == csv",
-  "bindings": {
-    "ctrl-alt-m": ["task::Spawn", { "task_name": "csv: markdown preview" }]
+[
+  {
+    "context": "Editor && extension == csv",
+    "bindings": {
+      "ctrl-alt-m": ["task::Spawn", { "task_name": "csv: markdown preview" }]
+    }
+  },
+  {
+    "context": "Editor && extension == md",
+    "bindings": { "ctrl-alt-m": "markdown::OpenPreview" }
   }
-}
+]
 ```
 
-The task needs `csv-ls` and `zed` findable from the task shell; if it
-seems to do nothing, set `"reveal": "always"` and `"hide": "never"`
-temporarily to see the command's error, and check `command -v csv-ls` in
-Zed's terminal (a GUI-launched Zed may have a shorter PATH than your
-shell — hardcode the absolute path in the task if so).
+`task_name` must match the task's `label` exactly — renaming the task
+(even temporarily, while debugging) silently breaks the binding. If the
+task seems to do nothing, set `"reveal": "always"` and `"hide": "never"`
+to see the command's error.
 
-One keystroke opens the markdown buffer; your usual `markdown: open
-preview` key does the rest (a task cannot press it for you — the buffer
-opens asynchronously, so a `SendKeystrokes` chain would fire too early).
-Re-running the task rewrites the same temp file and Zed reloads the open
-buffer, so the preview stays one keystroke away as the CSV evolves.
+Zed's CLI has no "open in markdown preview" flag, and the buffer opens
+asynchronously (so a `SendKeystrokes` chain would fire too early) — hence
+the second binding above: the *same* key, in markdown buffers, opens the
+preview. Press `ctrl-alt-m` in the CSV to generate and open the table,
+then `ctrl-alt-m` again for the rendered preview. Re-running the task
+rewrites the same temp file and Zed reloads the open buffer, so the
+preview stays one keystroke away as the CSV evolves.
 
 ### What the table view can(not) do
 
