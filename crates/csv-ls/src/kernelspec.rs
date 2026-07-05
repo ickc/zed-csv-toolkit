@@ -78,12 +78,24 @@ fn kernel_json(spec: &Spec, exe: &std::path::Path) -> Value {
     })
 }
 
+/// A kernelspec we own and may overwrite: one carrying our marker, or a
+/// legacy spec from the retired Python kernel (scripts/install-kernel.sh
+/// wrote argv pointing at csv_kernel.py, with no marker) — those must be
+/// migrated, not protected, or they keep pointing at a deleted file.
 fn was_generated_by_us(existing: &Value) -> bool {
-    existing
+    let marker = existing
         .get("metadata")
         .and_then(|m| m.get("generated_by"))
         .and_then(Value::as_str)
-        == Some("csv-ls")
+        == Some("csv-ls");
+    let legacy_python = existing
+        .get("argv")
+        .and_then(Value::as_array)
+        .is_some_and(|argv| {
+            argv.iter()
+                .any(|a| a.as_str().is_some_and(|s| s.contains("csv_kernel.py")))
+        });
+    marker || legacy_python
 }
 
 /// Write kernels/{csv,tsv,ssv,psv}/kernel.json under the resolved data dir.

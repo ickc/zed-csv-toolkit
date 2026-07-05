@@ -83,6 +83,19 @@ def main() -> None:
                          "language": "csv"}
         (foreign_dir / "kernel.json").write_text(json.dumps(foreign_spec))
 
+        # Migration check: a spec from the retired Python kernel (argv
+        # points at csv_kernel.py, no csv-ls marker) must be overwritten,
+        # or it would keep pointing at a file that no longer exists.
+        legacy_dir = kernels_dir / "tsv"
+        legacy_dir.mkdir(parents=True)
+        legacy_spec = {
+            "argv": ["/old/python", "/old/csv-kernel/csv_kernel.py", "-f",
+                     "{connection_file}"],
+            "display_name": "TSV Table",
+            "language": "tsv",
+        }
+        (legacy_dir / "kernel.json").write_text(json.dumps(legacy_spec))
+
         subprocess.run(
             [str(binary), "install-kernelspecs"],
             check=True,
@@ -92,6 +105,11 @@ def main() -> None:
         unchanged = json.loads((foreign_dir / "kernel.json").read_text())
         assert unchanged == foreign_spec, unchanged
         print("no-clobber: foreign csv kernelspec left untouched")
+
+        migrated = json.loads((legacy_dir / "kernel.json").read_text())
+        assert migrated["metadata"]["generated_by"] == "csv-ls", migrated
+        assert migrated["argv"][0] == str(binary), migrated
+        print("migration: legacy python kernelspec overwritten")
 
         # Remove the foreign spec and install for real so the rest of the
         # test (and jupyter_client's kernel lookup) sees csv-ls's own specs.

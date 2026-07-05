@@ -107,7 +107,9 @@ in the standard Jupyter location (`~/Library/Jupyter/kernels` on macOS,
 `~/.local/share/jupyter/kernels` on Linux, `%APPDATA%\jupyter\kernels` on
 Windows), pointing at its own binary — so the specs heal themselves when
 the binary moves, e.g. across extension updates. Kernelspecs it didn't
-generate (no `"metadata": {"generated_by": "csv-ls"}`) are never touched.
+generate (no `"metadata": {"generated_by": "csv-ls"}`) are never touched —
+except specs left behind by this repo's retired Python kernel (argv
+pointing at `csv_kernel.py`), which are recognized and migrated.
 To opt out, set `CSV_LS_NO_KERNELSPECS=1` in the server's environment, or
 remove the spec directories with `jupyter kernelspec remove csv tsv ssv psv`.
 
@@ -173,6 +175,12 @@ from the command palette on macOS):
   }
 }
 ```
+
+The task needs `csv-ls` and `zed` findable from the task shell; if it
+seems to do nothing, set `"reveal": "always"` and `"hide": "never"`
+temporarily to see the command's error, and check `command -v csv-ls` in
+Zed's terminal (a GUI-launched Zed may have a shorter PATH than your
+shell — hardcode the absolute path in the task if so).
 
 One keystroke opens the markdown buffer; your usual `markdown: open
 preview` key does the rest (a task cannot press it for you — the buffer
