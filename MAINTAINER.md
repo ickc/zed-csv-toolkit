@@ -74,6 +74,15 @@ Protocol notes (hard-won; keep these invariants):
   retired `csv_kernel.py`) are ever overwritten.
 - Zed auto-matches kernels because each kernelspec's `language` equals
   the Zed language name.
+- **Cold-start discovery race (Zed bug, not ours):** the first
+  `repl: run` after Zed launches checks Zed's in-memory kernel list
+  before its lazy kernelspec scan has run, logs
+  `No kernel found for language: CSV` (repl_sessions_ui.rs), and drops
+  the run without launching any kernel; the same action triggers the
+  scan, so the second run works. Kernel-side logs showing no
+  `execute_request` for a "failed" run are the fingerprint. The related
+  warm-start iopub race (first publish dropped before the subscription
+  landed) is what the connect-order gate above fixes.
 
 What the table cannot do is set by Zed's widget: autosized columns, no
 wrapping, no sorting, no interaction beyond copy-as-markdown. The

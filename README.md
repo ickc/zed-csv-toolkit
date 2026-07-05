@@ -33,7 +33,11 @@ language (language selector in the status bar).
 ## Inline table view
 
 Select the rows you want (include the header; `cmd-a` for the whole file),
-then `repl: run` (`ctrl-shift-enter`). The table renders inline;
+then `repl: run` (`ctrl-shift-enter`). Known Zed issue: the very first
+run after launching Zed may silently do nothing — Zed populates its
+kernel list lazily and drops the run that triggered the scan (the log
+shows `No kernel found for language: CSV`); just run again. The table
+renders inline;
 `repl: clear outputs` removes it. It is read-only: column widths autosize,
 long cells scroll rather than wrap, no sorting — limits of Zed's table
 widget, not of this extension. Copying it yields a markdown table.
