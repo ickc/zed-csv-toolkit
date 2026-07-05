@@ -361,6 +361,28 @@ async fn handle_control(
     Ok(shutdown)
 }
 
+/// Wait (up to 10s) for a peer to finish a connection handshake on the
+/// monitored socket, logging the outcome either way.
+async fn wait_for_accept(
+    monitor: &mut (impl futures_util::Stream<Item = SocketEvent> + Unpin),
+    name: &str,
+) {
+    let accepted = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while let Some(event) = monitor.next().await {
+            if matches!(event, SocketEvent::Accepted(..)) {
+                return true;
+            }
+        }
+        false
+    })
+    .await;
+    match accepted {
+        Ok(true) => log(&format!("{name} peer connected")),
+        Ok(false) => log(&format!("{name} monitor closed without a peer")),
+        Err(_) => log(&format!("no {name} peer within 10s; proceeding")),
+    }
+}
+
 /// Entry point for `csv-ls kernel -f <connection_file>`. Spins up a
 /// single-threaded tokio runtime for the lifetime of the kernel process.
 pub fn run(connection_file: &Path) -> Result<(), Error> {
@@ -386,6 +408,7 @@ async fn run_async(connection_file: &Path) -> Result<(), Error> {
     // Bound so clients can connect, but the REPL never uses stdin (no
     // `input()`-style prompts to service); never read from it.
     let mut stdin_sock = RouterSocket::new();
+    let mut stdin_monitor = stdin_sock.monitor();
     stdin_sock.bind(&endpoint(&conn, conn.stdin_port)).await?;
     let mut iopub = PubSocket::new();
     let mut iopub_monitor = iopub.monitor();
@@ -399,24 +422,18 @@ async fn run_async(connection_file: &Path) -> Result<(), Error> {
     // the iopub subscription handshake to reach this PUB socket — anything
     // published before that is silently dropped, and the first `repl: run`
     // would show no table. Hold off processing (requests queue in the shell
-    // socket meanwhile) until a peer actually connects to iopub, plus a
-    // beat for its subscription frame; the timeout keeps a subscriber-less
-    // client from hanging the kernel forever.
-    let accepted = tokio::time::timeout(std::time::Duration::from_secs(10), async {
-        while let Some(event) = iopub_monitor.next().await {
-            if matches!(event, SocketEvent::Accepted(..)) {
-                return true;
-            }
-        }
-        false
-    })
-    .await;
-    match accepted {
-        Ok(true) => log("iopub subscriber connected"),
-        Ok(false) => log("iopub monitor closed without a subscriber"),
-        Err(_) => log("no iopub subscriber within 10s; proceeding"),
-    }
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    // socket meanwhile) until it is safe to publish. A TCP accept on iopub
+    // alone is NOT that signal: the client's subscribe frame is sent by its
+    // own executor and can lag its handshake by however long that executor
+    // is busy (in Zed: the GPUI main thread, mid REPL-UI construction).
+    // Zed's connect order is the reliable signal — iopub's connect() returns
+    // only after the subscription is queued to the wire, and stdin connects
+    // last — so once a peer reaches the stdin socket, the subscription is
+    // already in flight. Timeouts keep unusual clients from hanging us.
+    wait_for_accept(&mut iopub_monitor, "iopub").await;
+    wait_for_accept(&mut stdin_monitor, "stdin").await;
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    log("processing requests");
 
     let heartbeat = tokio::spawn(async move {
         // A REP socket's send() re-attaches the envelope recv() stripped,
