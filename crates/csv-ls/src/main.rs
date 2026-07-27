@@ -13,7 +13,7 @@ mod table;
 mod time;
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use lsp_server::{Connection, Message, Notification, Request, Response};
 use lsp_types::notification::{
@@ -27,6 +27,7 @@ use lsp_types::{
     PublishDiagnosticsParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
     Uri,
 };
+use sha2::{Digest, Sha256};
 
 struct Doc {
     parsed: parse::Parsed,
@@ -79,10 +80,10 @@ fn main() -> Result<(), Error> {
 }
 
 /// Render a delimiter-separated file as a GFM pipe table. By default the
-/// markdown goes to stdout; `--temp` instead writes `<stem>.md` in the
-/// system temp dir and prints its path — a stable path, so re-running
-/// updates the same file (and Zed reloads the already-open buffer). The
-/// delimiter comes from the file extension, falling back to sniffing.
+/// markdown goes to stdout; `--temp` instead writes it under the system temp
+/// dir (see `temp_markdown_path`) and prints that path — a stable path, so
+/// re-running updates the same file and Zed reloads the already-open buffer.
+/// The delimiter comes from the file extension, falling back to sniffing.
 fn markdown_command(args: &[String]) -> Result<(), Error> {
     let mut temp = false;
     let mut file: Option<PathBuf> = None;
@@ -105,12 +106,66 @@ fn markdown_command(args: &[String]) -> Result<(), Error> {
     let md = table::markdown(&text, delim)
         .ok_or_else(|| format!("csv-ls markdown: {} is empty", file.display()))?;
     if temp {
-        let stem = file.file_stem().and_then(|s| s.to_str()).unwrap_or("table");
-        let out = std::env::temp_dir().join(format!("{stem}.md"));
+        let out = temp_markdown_path(&file)?;
         std::fs::write(&out, md)?;
         println!("{}", out.display());
     } else {
         print!("{md}");
+    }
+    Ok(())
+}
+
+/// Where `--temp` writes: `<temp>/csv-ls/<digest of the source path>/<stem>.md`.
+///
+/// Two constraints shape that. The path has to be stable across runs — that
+/// is what lets Zed reload an already-open preview buffer instead of opening
+/// a second one — but writing a predictable `<stem>.md` straight into the
+/// temp dir was wrong on both counts: two `data.csv` files in different
+/// directories overwrote each other, and on Linux the temp dir is shared and
+/// world-writable, so another local user could pre-plant `/tmp/data.md` as a
+/// symlink and redirect the write. A per-source subdirectory fixes the
+/// collision and keeps the stem in the filename (so the Zed tab still reads
+/// `data.md`), and the directories are created by us, private, and refused
+/// if they turn out to be anything but a real directory.
+fn temp_markdown_path(file: &Path) -> Result<PathBuf, Error> {
+    let root = std::env::temp_dir().join("csv-ls");
+    create_private_dir(&root)?;
+
+    // Canonicalize so the same file reached by different paths maps to one
+    // output; the source is known to exist here, it was just read.
+    let source = std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
+    let mut digest = Sha256::new();
+    digest.update(source.to_string_lossy().as_bytes());
+    let dir = root.join(
+        digest.finalize()[..8]
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>(),
+    );
+    create_private_dir(&dir)?;
+
+    let stem = file.file_stem().and_then(|s| s.to_str()).unwrap_or("table");
+    Ok(dir.join(format!("{stem}.md")))
+}
+
+/// Create `dir` if it is missing and make sure what is there is a real
+/// directory only we can write to. `symlink_metadata` does not follow the
+/// final component, so a symlink someone else planted is rejected here
+/// rather than silently written through. If the directory exists but belongs
+/// to another user, `set_permissions` fails and we stop — the safe outcome.
+fn create_private_dir(dir: &Path) -> Result<(), Error> {
+    match std::fs::create_dir(dir) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e.into()),
+    }
+    if !std::fs::symlink_metadata(dir)?.is_dir() {
+        return Err(format!("csv-ls: {} is not a directory", dir.display()).into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
     }
     Ok(())
 }
