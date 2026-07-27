@@ -6,8 +6,13 @@
 //!    `pixi run build-lsp` and symlinked somewhere on PATH),
 //! 3. a download from this repository's GitHub releases (requires the repo
 //!    to be public), cached per version in the extension's work directory.
+//!
+//! `lsp.csv-ls.binary.arguments` and `.env` apply however the binary was
+//! resolved, not just alongside an explicit `.path`.
 
-use zed_extension_api::{self as zed, settings::LspSettings, LanguageServerId, Result};
+use zed_extension_api::{
+    self as zed, settings::CommandSettings, settings::LspSettings, LanguageServerId, Result,
+};
 
 const GITHUB_REPO: &str = "ickc/zed-csv-toolkit";
 const SERVER_BIN: &str = "csv-ls";
@@ -22,12 +27,6 @@ impl CsvToolkitExtension {
         language_server_id: &LanguageServerId,
         worktree: &zed::Worktree,
     ) -> Result<String> {
-        if let Ok(settings) = LspSettings::for_worktree(SERVER_BIN, worktree) {
-            if let Some(path) = settings.binary.and_then(|binary| binary.path) {
-                return Ok(path);
-            }
-        }
-
         if let Some(path) = worktree.which(SERVER_BIN) {
             return Ok(path);
         }
@@ -128,10 +127,30 @@ impl zed::Extension for CsvToolkitExtension {
         language_server_id: &LanguageServerId,
         worktree: &zed::Worktree,
     ) -> Result<zed::Command> {
+        let binary: Option<CommandSettings> = LspSettings::for_worktree(SERVER_BIN, worktree)
+            .ok()
+            .and_then(|settings| settings.binary);
+
+        let command = match binary.as_ref().and_then(|b| b.path.clone()) {
+            Some(path) => path,
+            None => self.language_server_binary_path(language_server_id, worktree)?,
+        };
+
+        // `env` is how a user turns off the kernelspec install
+        // (CSV_LS_NO_KERNELSPECS=1); sorted because HashMap iteration order
+        // varies and Zed restarts a server whose command changed.
+        let mut env: Vec<(String, String)> = binary
+            .as_ref()
+            .and_then(|b| b.env.clone())
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
+        env.sort();
+
         Ok(zed::Command {
-            command: self.language_server_binary_path(language_server_id, worktree)?,
-            args: Vec::new(),
-            env: Vec::new(),
+            command,
+            args: binary.and_then(|b| b.arguments).unwrap_or_default(),
+            env,
         })
     }
 }

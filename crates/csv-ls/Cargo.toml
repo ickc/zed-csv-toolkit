@@ -1,6 +1,6 @@
 [package]
 name = "csv-ls"
-version = "0.2.3"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 description = "A lightweight language server for delimiter-separated values (CSV/TSV/SSV/PSV)."

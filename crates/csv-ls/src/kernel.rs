@@ -221,7 +221,9 @@ fn kernel_info_content() -> Value {
         "status": "ok",
         "protocol_version": PROTOCOL_VERSION,
         "implementation": "csv-kernel",
-        "implementation_version": "0.2.0",
+        // From the crate, not a literal: this was still reporting 0.2.0 three
+        // releases on, and it is what a client shows when a kernel misbehaves.
+        "implementation_version": env!("CARGO_PKG_VERSION"),
         "language_info": {
             "name": language,
             "version": "rfc4180",
@@ -265,19 +267,24 @@ async fn handle_shell(
             let store_history = incoming.content["store_history"].as_bool().unwrap_or(true);
 
             let delimiter = table::resolve_delimiter(code);
-            if let Some(built) = table::build(code, delimiter) {
-                if !silent {
-                    let data = json!({table::MIME: built.value, "text/plain": built.summary});
-                    publish(
-                        iopub,
-                        key,
-                        session,
-                        &incoming.header,
-                        "display_data",
-                        json!({"data": data, "metadata": {}}),
-                    )
-                    .await?;
-                }
+            if !silent {
+                let data = match table::build(code, delimiter) {
+                    Some(built) => json!({table::MIME: built.value, "text/plain": built.summary}),
+                    // Say so rather than publishing nothing: an empty
+                    // selection would otherwise look exactly like the
+                    // cold-start discovery race, which also shows no output.
+                    None => json!({"text/plain": "csv-kernel: nothing to render \
+                                                  (the selection has no rows)"}),
+                };
+                publish(
+                    iopub,
+                    key,
+                    session,
+                    &incoming.header,
+                    "display_data",
+                    json!({"data": data, "metadata": {}}),
+                )
+                .await?;
             }
             if !silent && store_history {
                 *execution_count += 1;

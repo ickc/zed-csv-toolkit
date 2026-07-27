@@ -1,6 +1,10 @@
 //! Installs the four Jupyter kernelspecs (csv/tsv/ssv/psv) that point back
 //! at this binary. Called both explicitly (`csv-ls install-kernelspecs`) and
 //! best-effort from the LSP entry point, so users need zero manual setup.
+//!
+//! The best-effort path is deliberately conservative: it writes only into a
+//! Jupyter data directory the user already has (see `jupyter_present`), so
+//! csv-ls never creates a Jupyter tree on a machine that has no Jupyter.
 
 use std::path::PathBuf;
 
@@ -64,6 +68,19 @@ fn data_dir() -> PathBuf {
     base.join("jupyter")
 }
 
+/// Whether this machine already has Jupyter, and so whether the unattended
+/// install from the LSP may write. An explicit $JUPYTER_DATA_DIR counts as
+/// the user pointing us at a location; otherwise the platform's data dir has
+/// to exist already. Creating that tree for someone who does not use Jupyter
+/// would leave four kernelspecs behind that no frontend ever asked for.
+/// `csv-ls install-kernelspecs` bypasses this — it is an explicit request.
+pub fn jupyter_present() -> bool {
+    if std::env::var_os("JUPYTER_DATA_DIR").is_some_and(|v| !v.is_empty()) {
+        return true;
+    }
+    data_dir().is_dir()
+}
+
 fn kernel_json(spec: &Spec, exe: &std::path::Path) -> Value {
     json!({
         "argv": [exe.to_string_lossy(), "kernel", "-f", "{connection_file}"],
@@ -109,7 +126,6 @@ pub fn install(explicit: bool) -> Result<(), Error> {
     let kernels_dir = data_dir().join("kernels");
     for spec in &SPECS {
         let dir = kernels_dir.join(spec.name);
-        std::fs::create_dir_all(&dir)?;
         let path = dir.join("kernel.json");
         let new_value = kernel_json(spec, &exe);
 
@@ -133,12 +149,42 @@ pub fn install(explicit: bool) -> Result<(), Error> {
         };
 
         if let Some(verb) = action {
+            // Created here, not up front, so a run that writes nothing (every
+            // spec current, or every spec foreign) leaves no empty directories.
+            std::fs::create_dir_all(&dir)?;
             let mut text = serde_json::to_string_pretty(&new_value)?;
             text.push('\n');
             std::fs::write(&path, text)?;
             if explicit {
                 println!("{verb} {}", path.display());
             }
+        }
+    }
+    Ok(())
+}
+
+/// Remove the kernelspecs csv-ls installed, so uninstalling the extension
+/// doesn't leave four kernels pointing at a deleted binary in every Jupyter
+/// frontend's kernel list. Ownership is judged exactly as on install: a spec
+/// that isn't ours is reported and left alone.
+pub fn uninstall() -> Result<(), Error> {
+    let kernels_dir = data_dir().join("kernels");
+    for spec in &SPECS {
+        let dir = kernels_dir.join(spec.name);
+        let path = dir.join("kernel.json");
+        let Ok(existing_text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        match serde_json::from_str::<Value>(&existing_text) {
+            Ok(existing) if was_generated_by_us(&existing) => {
+                std::fs::remove_file(&path)?;
+                // remove_dir, not remove_dir_all: anything else the user put
+                // in the kernel directory (logo PNGs, say) keeps the
+                // directory alive rather than being deleted along with it.
+                let _ = std::fs::remove_dir(&dir);
+                println!("removed {}", path.display());
+            }
+            _ => println!("skipped {}: not managed by csv-ls", path.display()),
         }
     }
     Ok(())
