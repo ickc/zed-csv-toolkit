@@ -13,6 +13,10 @@ and PSV (pipe):
 - **Markdown preview** — one keybinding turns the file into a markdown
   table, ready for Zed's markdown preview (wraps text, unlike the table).
 
+Open [`examples/demo.csv`](examples/demo.csv) to see all of it at once —
+it packs quoting, a multi-line field, and two ragged rows into six lines.
+`csv-ls --help` lists everything the binary can do on its own.
+
 Docs for developing, releasing, and design rationale live in
 [MAINTAINER.md](MAINTAINER.md).
 
@@ -21,14 +25,48 @@ Docs for developing, releasing, and design rationale live in
 Install the extension — the rest is automatic. The `csv-ls` language
 server is resolved in this order: `lsp.csv-ls.binary.path` in settings, a
 `csv-ls` on PATH, else downloaded from this repo's GitHub releases (and
-kept up to date). On startup `csv-ls` also installs the Jupyter
-kernelspecs that power the table view: no Python or Jupyter installation
-is needed. Opt out of that with `CSV_LS_NO_KERNELSPECS=1` in the server's
-environment; remove installed specs with
-`jupyter kernelspec remove csv tsv ssv psv`.
+kept up to date). `lsp.csv-ls.binary.arguments` and `.env` apply however
+the binary was resolved.
 
 For a semicolon-delimited `.csv` file, assign the buffer to the SSV
 language (language selector in the status bar).
+
+### What it writes outside Zed
+
+The inline table view is a Jupyter kernel, so it needs four kernelspecs
+(`csv`, `tsv`, `ssv`, `psv`) in your Jupyter data directory. `csv-ls`
+keeps them current on every start, but only if you already have Jupyter —
+an explicit `$JUPYTER_DATA_DIR`, or an existing platform data directory
+(`~/Library/Jupyter`, `%APPDATA%\jupyter`, `$XDG_DATA_HOME/jupyter`). On a
+machine with no Jupyter it writes nothing and says so in `zed: open log`.
+No Python is involved either way: the kernel is `csv-ls` itself.
+
+- **Enable it anyway:** run `csv-ls install-kernelspecs` once.
+- **Turn it off:** `{ "lsp": { "csv-ls": { "binary": { "env":
+  { "CSV_LS_NO_KERNELSPECS": "1" } } } } }` in settings.
+- **Remove what it wrote:** `csv-ls uninstall-kernelspecs` (or
+  `jupyter kernelspec remove csv tsv ssv psv`). Worth running before you
+  uninstall the extension, or the specs linger pointing at a binary that
+  is no longer there.
+
+A kernelspec that csv-ls did not write is never overwritten or removed.
+
+## Relationship to other CSV extensions
+
+Two CSV extensions already exist in Zed's registry, and this one overlaps
+both by design:
+
+- [`rainbow-csv`](https://github.com/weartist/zed-rainbow-csv) ships the
+  same grammar, pinned to the same commit, for the same four languages.
+  The rainbow highlighting here is not an improvement on it — it is the
+  same thing, bundled with the language server, because Zed has no way to
+  attach a language server to another extension's languages.
+- [`csv`](https://github.com/huacnlee/zed-csv) provides plain CSV syntax
+  from a different grammar.
+
+What this adds over both: diagnostics, hover, the inline table view, and
+the markdown preview. Install only one of the three — Zed registers
+languages by name, so two extensions defining `CSV` will fight over it.
 
 ## Inline table view
 
@@ -61,9 +99,11 @@ If several kernels exist for a language, pin ours in settings:
 ## Markdown preview
 
 `csv-ls markdown --temp <file>` writes the file as a GitHub-flavored
-markdown table to a stable temp path and prints it. Wire it to a task and
-a keybinding (`zed` is Zed's CLI — `cli: install` from the command
-palette):
+markdown table to a stable temp path and prints it. The path is derived
+from the source file, so re-running updates the same buffer and two
+same-named CSVs don't collide. Wire it to a task and a keybinding (`zed`
+is Zed's CLI — `cli: install` from the command palette; the command below
+is POSIX shell, so on Windows adapt it to your task shell):
 
 ```json
 // tasks.json (macOS; on Linux the fallback path is

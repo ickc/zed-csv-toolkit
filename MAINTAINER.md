@@ -39,9 +39,11 @@ pixi run -e kernel test-kernel # jupyter_client integration test (builds csv-ls 
     expose per-field spans in LSP coordinates (line + UTF-16 column).
   - `kernel -f <connection_file>`: Jupyter kernel (`kernel.rs`,
     `table.rs`, `time.rs`).
-  - `install-kernelspecs`: writes the four kernelspecs (`kernelspec.rs`);
-    also invoked best-effort on every LSP start.
+  - `install-kernelspecs` / `uninstall-kernelspecs`: writes or removes the
+    four kernelspecs (`kernelspec.rs`). The install also runs best-effort
+    on every LSP start, but only where Jupyter already exists — see below.
   - `markdown <file> [--temp]`: GFM pipe-table renderer.
+  - `--help` / `--version`.
 - `languages/`, `extension.toml` — Zed language definitions and the
   pinned rainbow grammar commits.
 - `csv-kernel/test_kernel.py` — integration test driving the built binary
@@ -72,6 +74,14 @@ Protocol notes (hard-won; keep these invariants):
   when the binary path changes; only specs with
   `metadata.generated_by == "csv-ls"` (or legacy argv referencing the
   retired `csv_kernel.py`) are ever overwritten.
+- **The unattended install writes only where Jupyter already is.** Zed's
+  extension guidelines forbid modifying the environment outside the one
+  Zed designates, and creating `~/.local/share/jupyter/kernels/*` on a
+  machine with no Jupyter is exactly that. `kernelspec::jupyter_present()`
+  gates it on an explicit `$JUPYTER_DATA_DIR` or an existing platform data
+  dir; `install-kernelspecs` bypasses the gate, because asking for it is
+  consent. Keep that asymmetry — it is what makes the side effect
+  defensible at review time.
 - Zed auto-matches kernels because each kernelspec's `language` equals
   the Zed language name.
 - **Cold-start discovery race (Zed bug, not ours):** the first
@@ -102,6 +112,22 @@ the only table view available to an extension today.
 4. The extension checks the latest GitHub release whenever it (re)loads,
    so release-path users pick the new binary up on their next Zed
    restart; the LSP then refreshes the kernelspecs to the new path.
+
+## Submitting to the Zed extension registry
+
+Fork `zed-industries/extensions`, add this repo as an HTTPS submodule
+under `extensions/csv-toolkit`, add a matching entry to `extensions.toml`,
+run `pnpm sort-extensions`, and open a PR. The submodule must point at the
+release tag whose `extension.toml` version matches the entry.
+
+Two things a reviewer is likely to raise, both answered above and in the
+README: the kernelspec writes (gated on Jupyter already being present,
+opt-out documented, uninstall provided), and the overlap with the existing
+`rainbow-csv` extension, which ships the same grammar at the same commit
+for the same four languages. Zed's guidelines ask that extensions not
+duplicate what is already in the registry; the answer here is that a
+language server cannot be attached to another extension's languages, so
+the grammar has to be re-declared to carry the LSP with it.
 
 ## Design decisions
 
