@@ -115,7 +115,8 @@ fn markdown_command(args: &[String]) -> Result<(), Error> {
     Ok(())
 }
 
-/// Where `--temp` writes: `<temp>/csv-ls/<digest of the source path>/<stem>.md`.
+/// Where `--temp` writes:
+/// `<temp>/csv-ls-<user>/<digest of the source path>/<stem>.md`.
 ///
 /// Two constraints shape that. The path has to be stable across runs — that
 /// is what lets Zed reload an already-open preview buffer instead of opening
@@ -128,7 +129,7 @@ fn markdown_command(args: &[String]) -> Result<(), Error> {
 /// `data.md`), and the directories are created by us, private, and refused
 /// if they turn out to be anything but a real directory.
 fn temp_markdown_path(file: &Path) -> Result<PathBuf, Error> {
-    let root = std::env::temp_dir().join("csv-ls");
+    let root = temp_root();
     create_private_dir(&root)?;
 
     // Canonicalize so the same file reached by different paths maps to one
@@ -146,6 +147,41 @@ fn temp_markdown_path(file: &Path) -> Result<PathBuf, Error> {
 
     let stem = file.file_stem().and_then(|s| s.to_str()).unwrap_or("table");
     Ok(dir.join(format!("{stem}.md")))
+}
+
+/// The root the per-source directories live under. Its name carries a
+/// per-user component because `create_private_dir` insists on owning what it
+/// finds: a single shared `/tmp/csv-ls` would be created 0700 by whichever
+/// user ran first and then fail for every other user on the machine. Windows
+/// and macOS already hand out a per-user temp dir, so the component is
+/// redundant there and only Linux/BSD actually need it.
+fn temp_root() -> PathBuf {
+    let temp = std::env::temp_dir();
+    #[cfg(unix)]
+    {
+        temp.join(format!("csv-ls-{}", user_tag()))
+    }
+    #[cfg(not(unix))]
+    {
+        temp.join("csv-ls")
+    }
+}
+
+/// Something that differs between users of the same machine. `/proc/self` is
+/// owned by our real uid, which covers Linux — the platform with the shared
+/// temp dir — without a libc dependency; elsewhere fall back to the login
+/// name Zed inherits from the user's shell. This only keeps users out of each
+/// other's directory: `create_private_dir` is what makes the path safe, so a
+/// spoofed or missing value costs nothing.
+#[cfg(unix)]
+fn user_tag() -> String {
+    use std::os::unix::fs::MetadataExt;
+    if let Ok(md) = std::fs::metadata("/proc/self") {
+        return md.uid().to_string();
+    }
+    std::env::var("USER")
+        .or_else(|_| std::env::var("LOGNAME"))
+        .unwrap_or_else(|_| "shared".to_string())
 }
 
 /// Create `dir` if it is missing and make sure what is there is a real

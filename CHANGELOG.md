@@ -14,10 +14,11 @@ Preparation for the Zed extension registry.
 - `lsp.csv-ls.binary.arguments` and `.env` are now passed through however
   the binary was resolved. Previously both were dropped, which left the
   documented `CSV_LS_NO_KERNELSPECS` opt-out with no way to be set.
-- `markdown --temp` writes to `<temp>/csv-ls/<digest>/<stem>.md` instead of
-  `<temp>/<stem>.md`. Two same-named CSVs in different directories no
-  longer overwrite each other's preview, and the output is no longer at a
-  predictable path in a world-writable directory.
+- `markdown --temp` writes to `<temp>/csv-ls-<user>/<digest>/<stem>.md`
+  instead of `<temp>/<stem>.md`. Two same-named CSVs in different
+  directories no longer overwrite each other's preview, the output is no
+  longer at a predictable path in a world-writable directory, and users
+  sharing a machine no longer share a private root they cannot both own.
 
 ### Added
 
