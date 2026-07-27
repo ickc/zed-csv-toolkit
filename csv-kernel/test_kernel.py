@@ -25,7 +25,13 @@ def csv_ls_binary() -> Path:
     return path
 
 
-def run_kernel_case(kernel_name: str, text: str):
+def binary_version(binary: Path) -> str:
+    out = subprocess.run([str(binary), "--version"], check=True,
+                         capture_output=True, text=True).stdout
+    return out.split()[-1]
+
+
+def run_kernel_case(kernel_name: str, text: str, version: str = ""):
     from jupyter_client.manager import KernelManager
 
     km = KernelManager(kernel_name=kernel_name)
@@ -41,6 +47,10 @@ def run_kernel_case(kernel_name: str, text: str):
         assert info["protocol_version"], info
         for field in ("name", "version"):
             assert info["language_info"].get(field), (field, info)
+        # Comes from CARGO_PKG_VERSION, so it cannot drift from the binary
+        # the way a hardcoded literal did.
+        if version:
+            assert info["implementation_version"] == version, info
         # Drain this request's iopub busy/idle before executing.
         while True:
             msg = kc.get_iopub_msg(timeout=30)
@@ -125,7 +135,8 @@ def main() -> None:
             assert spec["language"] == name, spec
             assert Path(spec["argv"][0]).is_absolute(), spec
 
-        outputs = run_kernel_case("csv", "name,age\nalice,30\nbob,\n")
+        outputs = run_kernel_case("csv", "name,age\nalice,30\nbob,\n",
+                                  version=binary_version(binary))
         assert len(outputs) == 1, outputs
         table = outputs[0][MIME]
         assert table["schema"]["fields"] == [
