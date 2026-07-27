@@ -4,7 +4,7 @@
 //! Python `csv_kernel.py`, but reuses `parse::parse` instead of Python's
 //! `csv` module.
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use serde_json::{json, Map, Value};
 
@@ -112,24 +112,30 @@ pub fn build(text: &str, delimiter: char) -> Option<Table> {
 
 /// Field names must be unique and non-empty to key the data objects: blank
 /// names become "column N" (1-based), duplicates get " (2)", " (3)", ...
+///
+/// The suffix search retries until the name is unused rather than trusting
+/// the first candidate: a header can already contain the very name a suffix
+/// would produce (`a (2)`, `a`, `a` — the third column must not land back on
+/// the first). A collision is not cosmetic here, because the rows below are
+/// JSON objects keyed by these names, so a repeat silently drops a column.
 fn uniquify(names: &[String]) -> Vec<String> {
-    let mut seen: HashMap<String, usize> = HashMap::new();
+    let mut used: HashSet<String> = HashSet::new();
     names
         .iter()
         .enumerate()
         .map(|(i, raw)| {
             let trimmed = raw.trim();
-            let mut name = if trimmed.is_empty() {
+            let base = if trimmed.is_empty() {
                 format!("column {}", i + 1)
             } else {
                 trimmed.to_string()
             };
-            if let Some(count) = seen.get(&name).copied() {
-                let next = count + 1;
-                seen.insert(name.clone(), next);
-                name = format!("{name} ({next})");
+            let mut name = base.clone();
+            let mut n = 1;
+            while !used.insert(name.clone()) {
+                n += 1;
+                name = format!("{base} ({n})");
             }
-            seen.entry(name.clone()).or_insert(1);
             name
         })
         .collect()
@@ -263,6 +269,26 @@ mod tests {
             vec!["column 1", "a", "a (2)", "a (3)"]
         );
         assert_eq!(uniquify(&["  ".into(), "x".into()]), vec!["column 1", "x"]);
+    }
+
+    #[test]
+    fn uniquify_skips_names_the_header_already_uses() {
+        // The naive "first candidate wins" suffix lands the third column on
+        // "a (2)", which column 0 already occupies.
+        assert_eq!(
+            uniquify(&["a (2)".into(), "a".into(), "a".into()]),
+            vec!["a (2)", "a", "a (3)"]
+        );
+    }
+
+    #[test]
+    fn duplicate_headers_keep_every_column() {
+        // Rows are JSON objects keyed by column name, so a collision would
+        // drop one of these columns from every row.
+        let t = build("a,a\n1,2\n", ',').unwrap();
+        let fields = t.value["schema"]["fields"].as_array().unwrap();
+        assert_eq!(fields.len(), 2);
+        assert_eq!(t.value["data"], json!([{"a": 1, "a (2)": 2}]));
     }
 
     #[test]
