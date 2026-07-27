@@ -143,6 +143,12 @@ fn uniquify(names: &[String]) -> Vec<String> {
 
 /// Frictionless field type: integer/number if every non-empty value in the
 /// column parses; an all-empty column is a string column.
+///
+/// "Parses" means finite for the number case. `f64::from_str` also accepts
+/// `inf`, `-Infinity`, and `NaN`, none of which JSON can represent — typing
+/// such a column as a number would send those cells through `convert` and
+/// out the other side as nulls, so the table would show blanks where the
+/// file says `inf`. A string column renders them verbatim instead.
 fn column_type<'a>(values: impl Iterator<Item = &'a str>) -> ColType {
     let non_empty: Vec<&str> = values.filter(|v| !v.is_empty()).collect();
     if non_empty.is_empty() {
@@ -151,7 +157,10 @@ fn column_type<'a>(values: impl Iterator<Item = &'a str>) -> ColType {
     if non_empty.iter().all(|v| v.parse::<i64>().is_ok()) {
         return ColType::Integer;
     }
-    if non_empty.iter().all(|v| v.parse::<f64>().is_ok()) {
+    if non_empty
+        .iter()
+        .all(|v| v.parse::<f64>().is_ok_and(f64::is_finite))
+    {
         return ColType::Number;
     }
     ColType::String
@@ -254,6 +263,18 @@ mod tests {
         let t = build("a\tb\n1.5\t2\n", '\t').unwrap();
         assert_eq!(t.value["schema"]["fields"][0]["type"], "number");
         assert_eq!(t.value["data"], json!([{"a": 1.5, "b": 2}]));
+    }
+
+    #[test]
+    fn non_finite_values_keep_the_column_a_string() {
+        // Typed as a number these become JSON nulls and the cells read as
+        // blank; as strings they show what the file actually says.
+        for text in ["v\n1\ninf\n", "v\n1\nNaN\n", "v\n-Infinity\n"] {
+            let t = build(text, ',').unwrap();
+            assert_eq!(t.value["schema"]["fields"][0]["type"], "string", "{text:?}");
+        }
+        let t = build("v\n1\ninf\n", ',').unwrap();
+        assert_eq!(t.value["data"], json!([{"v": "1"}, {"v": "inf"}]));
     }
 
     #[test]
