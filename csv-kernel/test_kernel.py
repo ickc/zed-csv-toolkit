@@ -145,6 +145,21 @@ def main() -> None:
         assert table["data"] == [{"a": 1.5, "b": 2}], table["data"]
         print("tsv kernel: delimiter + number typing OK")
 
+        # Uninstall removes only our own specs, so removing the extension
+        # doesn't leave kernels pointing at a deleted binary — and doesn't
+        # take someone else's `ssv` kernel with it.
+        (kernels_dir / "ssv" / "kernel.json").write_text(json.dumps(foreign_spec))
+        subprocess.run(
+            [str(binary), "uninstall-kernelspecs"],
+            check=True,
+            env=os.environ,
+        )
+        for name in ("csv", "tsv", "psv"):
+            assert not (kernels_dir / name).exists(), name
+        survivor = json.loads((kernels_dir / "ssv" / "kernel.json").read_text())
+        assert survivor == foreign_spec, survivor
+        print("uninstall: own specs removed, foreign spec left untouched")
+
     print("all kernel tests passed")
 
 

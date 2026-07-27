@@ -35,18 +35,46 @@ struct Doc {
 
 type Error = Box<dyn std::error::Error + Sync + Send>;
 
-/// `csv-ls` with no args speaks LSP over stdio (the original behavior).
-/// `csv-ls kernel -f <connection_file>` runs as a Jupyter kernel instead.
-/// `csv-ls install-kernelspecs` writes the kernelspecs and exits.
-/// `csv-ls markdown <file> [--temp]` renders the file as a markdown table.
+const USAGE: &str = "\
+csv-ls — language server, Jupyter kernel, and markdown renderer for
+delimiter-separated values (CSV/TSV/SSV/PSV).
+
+Usage:
+  csv-ls                                speak LSP over stdio (default)
+  csv-ls kernel -f <connection_file>    run as a Jupyter kernel
+  csv-ls install-kernelspecs            install the csv/tsv/ssv/psv kernelspecs
+  csv-ls uninstall-kernelspecs          remove the kernelspecs csv-ls installed
+  csv-ls markdown <file> [--temp]       render as a GitHub-flavored markdown
+                                        table; --temp writes it to a temp file
+                                        and prints that path instead
+  csv-ls --help | --version
+
+Environment:
+  CSV_LS_NO_KERNELSPECS=1   skip the kernelspec install done at LSP start
+  JUPYTER_DATA_DIR          where kernelspecs are read and written
+";
+
+/// `csv-ls` with no args speaks LSP over stdio (the original behavior);
+/// every other mode is a subcommand. See `USAGE`.
 fn main() -> Result<(), Error> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         None => run_lsp(),
         Some("kernel") => kernel::run(&connection_file_arg(&args[1..])?),
         Some("install-kernelspecs") => kernelspec::install(true),
+        Some("uninstall-kernelspecs") => kernelspec::uninstall(),
         Some("markdown") => markdown_command(&args[1..]),
-        Some(other) => Err(format!("csv-ls: unknown subcommand `{other}`").into()),
+        Some("--help" | "-h" | "help") => {
+            print!("{USAGE}");
+            Ok(())
+        }
+        Some("--version" | "-V") => {
+            println!("csv-ls {}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
+        Some(other) => {
+            Err(format!("csv-ls: unknown subcommand `{other}`; try `csv-ls --help`").into())
+        }
     }
 }
 
@@ -102,6 +130,30 @@ fn connection_file_arg(args: &[String]) -> Result<PathBuf, Error> {
     Err("csv-ls kernel: requires -f <connection_file>".into())
 }
 
+/// Refresh the kernelspecs behind the inline table view, on every LSP start
+/// so they follow the binary when a release upgrade moves it. Never fatal
+/// and never surprising: a REPL table view is a nice-to-have, and this must
+/// not conjure a Jupyter data directory on a machine that has no Jupyter.
+/// Notes go to stderr, which Zed captures (`zed: open log`); stdout is the
+/// LSP channel and must stay clean.
+fn install_kernelspecs_best_effort() {
+    if std::env::var_os("CSV_LS_NO_KERNELSPECS").is_some_and(|v| !v.is_empty()) {
+        eprintln!("csv-ls: kernelspec install disabled by CSV_LS_NO_KERNELSPECS");
+        return;
+    }
+    if !kernelspec::jupyter_present() {
+        eprintln!(
+            "csv-ls: no Jupyter data directory found; skipping kernelspec install \
+             (run `csv-ls install-kernelspecs` to enable the inline table view)"
+        );
+        return;
+    }
+    match kernelspec::install(false) {
+        Ok(()) => eprintln!("csv-ls: kernelspecs installed"),
+        Err(e) => eprintln!("csv-ls: kernelspec install skipped: {e}"),
+    }
+}
+
 fn run_lsp() -> Result<(), Error> {
     let (connection, io_threads) = Connection::stdio();
     let capabilities = serde_json::to_value(ServerCapabilities {
@@ -110,19 +162,7 @@ fn run_lsp() -> Result<(), Error> {
         ..ServerCapabilities::default()
     })?;
     connection.initialize(capabilities)?;
-    // Best-effort: a REPL table view is a nice-to-have, never a hard
-    // requirement for the language server to function.
-    if std::env::var_os("CSV_LS_NO_KERNELSPECS")
-        .map(|v| !v.is_empty())
-        .unwrap_or(false)
-    {
-        // Opted out.
-    } else {
-        match kernelspec::install(false) {
-            Ok(()) => eprintln!("csv-ls: kernelspecs installed"),
-            Err(e) => eprintln!("csv-ls: kernelspec install skipped: {e}"),
-        }
-    }
+    install_kernelspecs_best_effort();
     // Take the connection by value so it (and its channel senders) is dropped
     // before joining the I/O threads; otherwise the writer thread never exits.
     main_loop(connection)?;
