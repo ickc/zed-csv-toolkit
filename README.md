@@ -75,7 +75,11 @@ then `repl: run` (`ctrl-shift-enter`). Known Zed issue: the very first
 run after launching Zed may silently do nothing — Zed populates its
 kernel list lazily and drops the run that triggered the scan (the log
 shows `No kernel found for language: CSV`); just run again. The table
-renders inline;
+renders inline (shown here alongside rainbow columns and a ragged-row
+diagnostic):
+
+![Inline table view, with rainbow columns and a ragged-row diagnostic in the editor above it](assets/inline-table-view.png)
+
 `repl: clear outputs` removes it. It is read-only: column widths autosize,
 long cells scroll rather than wrap, no sorting — limits of Zed's table
 widget, not of this extension. Copying it yields a markdown table.
@@ -97,6 +101,8 @@ If several kernels exist for a language, pin ours in settings:
 `{ "jupyter": { "kernel_selections": { "csv": "csv" } } }`.
 
 ## Markdown preview
+
+![Markdown preview of a CSV rendered as a table](assets/markdown-preview.png)
 
 `csv-ls markdown --temp <file>` writes the file as a GitHub-flavored
 markdown table to a stable temp path and prints it. The path is derived
