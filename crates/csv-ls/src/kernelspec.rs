@@ -1,10 +1,10 @@
 //! Installs the four Jupyter kernelspecs (csv/tsv/ssv/psv) that point back
-//! at this binary. Called both explicitly (`csv-ls install-kernelspecs`) and
-//! best-effort from the LSP entry point, so users need zero manual setup.
+//! at this binary.
 //!
-//! The best-effort path is deliberately conservative: it writes only into a
-//! Jupyter data directory the user already has (see `jupyter_present`), so
-//! csv-ls never creates a Jupyter tree on a machine that has no Jupyter.
+//! A Jupyter data directory belongs to the user, not to this extension, so
+//! nothing here ever runs on its own: the only callers are the explicit
+//! `csv-ls install-kernelspecs` / `uninstall-kernelspecs` subcommands and an
+//! LSP start that the user opted in to (see `main::install_kernelspecs_if_opted_in`).
 
 use std::path::PathBuf;
 
@@ -66,19 +66,6 @@ fn data_dir() -> PathBuf {
             PathBuf::from(home).join(".local/share")
         });
     base.join("jupyter")
-}
-
-/// Whether this machine already has Jupyter, and so whether the unattended
-/// install from the LSP may write. An explicit $JUPYTER_DATA_DIR counts as
-/// the user pointing us at a location; otherwise the platform's data dir has
-/// to exist already. Creating that tree for someone who does not use Jupyter
-/// would leave four kernelspecs behind that no frontend ever asked for.
-/// `csv-ls install-kernelspecs` bypasses this — it is an explicit request.
-pub fn jupyter_present() -> bool {
-    if std::env::var_os("JUPYTER_DATA_DIR").is_some_and(|v| !v.is_empty()) {
-        return true;
-    }
-    data_dir().is_dir()
 }
 
 fn kernel_json(spec: &Spec, exe: &std::path::Path) -> Value {

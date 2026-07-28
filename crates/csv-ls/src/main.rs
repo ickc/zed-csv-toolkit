@@ -50,8 +50,11 @@ Usage:
                                         and prints that path instead
   csv-ls --help | --version
 
+The LSP writes kernelspecs only when the client asks it to, by sending
+`initializationOptions: {\"install_kernelspecs\": true}`; otherwise nothing
+outside the editor's own directories is ever touched.
+
 Environment:
-  CSV_LS_NO_KERNELSPECS=1   skip the kernelspec install done at LSP start
   JUPYTER_DATA_DIR          where kernelspecs are read and written
 ";
 
@@ -221,27 +224,32 @@ fn connection_file_arg(args: &[String]) -> Result<PathBuf, Error> {
     Err("csv-ls kernel: requires -f <connection_file>".into())
 }
 
-/// Refresh the kernelspecs behind the inline table view, on every LSP start
-/// so they follow the binary when a release upgrade moves it. Never fatal
-/// and never surprising: a REPL table view is a nice-to-have, and this must
-/// not conjure a Jupyter data directory on a machine that has no Jupyter.
-/// Notes go to stderr, which Zed captures (`zed: open log`); stdout is the
-/// LSP channel and must stay clean.
-fn install_kernelspecs_best_effort() {
-    if std::env::var_os("CSV_LS_NO_KERNELSPECS").is_some_and(|v| !v.is_empty()) {
-        eprintln!("csv-ls: kernelspec install disabled by CSV_LS_NO_KERNELSPECS");
-        return;
-    }
-    if !kernelspec::jupyter_present() {
+/// Refresh the kernelspecs behind the inline table view — but only for a
+/// client that asked, with `initializationOptions.install_kernelspecs`. A
+/// Jupyter data directory is user-managed state outside the directory the
+/// editor designates for this extension, so opening a CSV must never write
+/// there on its own; opting in is the explicit installation action, and it
+/// then re-runs on every start so the specs follow the binary when a release
+/// upgrade moves it. Notes go to stderr, which Zed captures (`zed: open
+/// log`); stdout is the LSP channel and must stay clean.
+fn install_kernelspecs_if_opted_in(init_params: &serde_json::Value) {
+    let opted_in = init_params
+        .get("initializationOptions")
+        .and_then(|opts| opts.get("install_kernelspecs"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    if !opted_in {
+        // Says why `repl: run` finds no kernel, which is otherwise silent.
         eprintln!(
-            "csv-ls: no Jupyter data directory found; skipping kernelspec install \
-             (run `csv-ls install-kernelspecs` to enable the inline table view)"
+            "csv-ls: inline table view off; kernelspecs are not installed \
+             (set lsp.csv-ls.initialization_options.install_kernelspecs to true, \
+             or run `csv-ls install-kernelspecs`)"
         );
         return;
     }
     match kernelspec::install(false) {
         Ok(()) => eprintln!("csv-ls: kernelspecs installed"),
-        Err(e) => eprintln!("csv-ls: kernelspec install skipped: {e}"),
+        Err(e) => eprintln!("csv-ls: kernelspec install failed: {e}"),
     }
 }
 
@@ -252,8 +260,8 @@ fn run_lsp() -> Result<(), Error> {
         hover_provider: Some(HoverProviderCapability::Simple(true)),
         ..ServerCapabilities::default()
     })?;
-    connection.initialize(capabilities)?;
-    install_kernelspecs_best_effort();
+    let init_params = connection.initialize(capabilities)?;
+    install_kernelspecs_if_opted_in(&init_params);
     // Take the connection by value so it (and its channel senders) is dropped
     // before joining the I/O threads; otherwise the writer thread never exits.
     main_loop(connection)?;

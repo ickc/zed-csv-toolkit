@@ -9,7 +9,7 @@ and PSV (pipe):
 - **Hover** — any cell shows its column name, column index, and row
   position — invaluable in wide files where the header is scrolled away.
 - **Inline table view** — select rows, run once, see a real table rendered
-  in the editor.
+  in the editor (opt-in; see [Setup](#enabling-the-inline-table-view)).
 - **Markdown preview** — one keybinding turns the file into a markdown
   table, ready for Zed's markdown preview (wraps text, unlike the table).
 
@@ -31,23 +31,37 @@ the binary was resolved.
 For a semicolon-delimited `.csv` file, assign the buffer to the SSV
 language (language selector in the status bar).
 
-### What it writes outside Zed
+### Enabling the inline table view
 
-The inline table view is a Jupyter kernel, so it needs four kernelspecs
-(`csv`, `tsv`, `ssv`, `psv`) in your Jupyter data directory. `csv-ls`
-keeps them current on every start, but only if you already have Jupyter —
-an explicit `$JUPYTER_DATA_DIR`, or an existing platform data directory
-(`~/Library/Jupyter`, `%APPDATA%\jupyter`, `$XDG_DATA_HOME/jupyter`). On a
-machine with no Jupyter it writes nothing and says so in `zed: open log`.
-No Python is involved either way: the kernel is `csv-ls` itself.
+Rainbow columns, diagnostics, hover, and the markdown preview need no
+setup. The inline table view does, because it is a Jupyter kernel: it
+needs four kernelspecs (`csv`, `tsv`, `ssv`, `psv`) in your Jupyter data
+directory, which is yours, not the extension's. Nothing is written there
+until you ask, in one of two ways:
 
-- **Enable it anyway:** run `csv-ls install-kernelspecs` once.
-- **Turn it off:** `{ "lsp": { "csv-ls": { "binary": { "env":
-  { "CSV_LS_NO_KERNELSPECS": "1" } } } } }` in settings.
-- **Remove what it wrote:** `csv-ls uninstall-kernelspecs` (or
-  `jupyter kernelspec remove csv tsv ssv psv`). Worth running before you
-  uninstall the extension, or the specs linger pointing at a binary that
-  is no longer there.
+- **In settings** — the extension then installs the kernelspecs at every
+  language-server start, so they keep pointing at the current binary
+  across upgrades:
+
+  ```json
+  // settings.json
+  { "lsp": { "csv-ls": { "initialization_options": {
+    "install_kernelspecs": true } } } }
+  ```
+
+- **Once, from a terminal** — `csv-ls install-kernelspecs`. Use the
+  `csv-ls` on your PATH; a versioned copy downloaded by the extension
+  moves on upgrade, and the kernelspecs would then point at a binary that
+  is gone.
+
+Either way the target is `$JUPYTER_DATA_DIR` if set, else the platform
+data directory (`~/Library/Jupyter`, `%APPDATA%\jupyter`,
+`$XDG_DATA_HOME/jupyter`). No Python is involved: the kernel is `csv-ls`
+itself. Removing the opt-in stops future writes; to remove what was
+written, run `csv-ls uninstall-kernelspecs` (or `jupyter kernelspec
+remove csv tsv ssv psv`) — worth doing before you uninstall the
+extension, or the specs linger pointing at a binary that is no longer
+there.
 
 A kernelspec that csv-ls did not write is never overwritten or removed.
 
@@ -69,6 +83,10 @@ the markdown preview. Install only one of the three — Zed registers
 languages by name, so two extensions defining `CSV` will fight over it.
 
 ## Inline table view
+
+Install the kernelspecs first — see
+[Enabling the inline table view](#enabling-the-inline-table-view); until
+then `repl: run` finds no kernel for the language.
 
 Select the rows you want (include the header; `cmd-a` for the whole file),
 then `repl: run` (`ctrl-shift-enter`). Known Zed issue: the very first

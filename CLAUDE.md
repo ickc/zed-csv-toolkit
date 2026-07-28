@@ -27,11 +27,11 @@ Internals and design rationale: [MAINTAINER.md](MAINTAINER.md). User docs:
   `metadata.generated_by == "csv-ls"` or legacy specs whose argv references
   `csv_kernel.py`; foreign specs are untouchable. The same rule governs
   `uninstall-kernelspecs`.
-- The kernelspec install that runs from the LSP must stay gated on
-  `kernelspec::jupyter_present()` — Zed's guidelines forbid modifying the
-  environment outside the one Zed designates, so csv-ls never creates a
-  Jupyter tree that wasn't already there. The explicit subcommand is the
-  only path allowed to.
+- The LSP installs kernelspecs only when the client opts in with
+  `initializationOptions.install_kernelspecs` — Zed's guidelines forbid
+  modifying the environment outside the one Zed designates, and a Jupyter
+  data directory is outside it whether or not it already exists (registry
+  review: zed-industries/extensions#6990). Never make it unattended again.
 - `table.rs` unit tests and `csv-kernel/test_kernel.py` assert the same
   semantics (typing, uniquify, padding, nulls) — change both together.
 - Tests run in parallel threads: never mutate env vars in a test without

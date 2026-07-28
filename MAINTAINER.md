@@ -40,8 +40,8 @@ pixi run -e kernel test-kernel # jupyter_client integration test (builds csv-ls 
   - `kernel -f <connection_file>`: Jupyter kernel (`kernel.rs`,
     `table.rs`, `time.rs`).
   - `install-kernelspecs` / `uninstall-kernelspecs`: writes or removes the
-    four kernelspecs (`kernelspec.rs`). The install also runs best-effort
-    on every LSP start, but only where Jupyter already exists — see below.
+    four kernelspecs (`kernelspec.rs`). The install also runs on every LSP
+    start, but only for a client that opted in — see below.
   - `markdown <file> [--temp]`: GFM pipe-table renderer.
   - `--help` / `--version`.
 - `languages/`, `extension.toml` — Zed language definitions and the
@@ -74,14 +74,23 @@ Protocol notes (hard-won; keep these invariants):
   when the binary path changes; only specs with
   `metadata.generated_by == "csv-ls"` (or legacy argv referencing the
   retired `csv_kernel.py`) are ever overwritten.
-- **The unattended install writes only where Jupyter already is.** Zed's
-  extension guidelines forbid modifying the environment outside the one
-  Zed designates, and creating `~/.local/share/jupyter/kernels/*` on a
-  machine with no Jupyter is exactly that. `kernelspec::jupyter_present()`
-  gates it on an explicit `$JUPYTER_DATA_DIR` or an existing platform data
-  dir; `install-kernelspecs` bypasses the gate, because asking for it is
-  consent. Keep that asymmetry — it is what makes the side effect
-  defensible at review time.
+- **Nothing installs kernelspecs unattended.** Zed's extension guidelines
+  forbid modifying the environment outside the one Zed designates, and a
+  Jupyter data directory is user-managed state outside it — whether or
+  not it already exists. So opening a CSV writes nothing: the only two
+  callers of `kernelspec::install` are the `install-kernelspecs`
+  subcommand and an LSP start whose `initializationOptions` carry
+  `install_kernelspecs: true`, which reaches the server from
+  `lsp.csv-ls.initialization_options` via the extension's
+  `language_server_initialization_options`. Keep it that way; an earlier
+  design that installed by default wherever Jupyter happened to exist was
+  rejected in registry review (zed-industries/extensions#6990), and
+  "check that the directory exists" is not consent.
+
+  Kernelspecs cannot live in the extension's own work directory instead:
+  Zed's REPL discovers kernels only through Jupyter's standard data
+  directories, and an extension cannot set `JUPYTER_PATH` for Zed.
+  Opt-in is therefore the only route to the table view.
 - Zed auto-matches kernels because each kernelspec's `language` equals
   the Zed language name.
 - **Cold-start discovery race (Zed bug, not ours):** the first
@@ -111,7 +120,8 @@ the only table view available to an extension today.
    tag, publishes `csv-ls-<target>.tar.gz` release assets.
 4. The extension checks the latest GitHub release whenever it (re)loads,
    so release-path users pick the new binary up on their next Zed
-   restart; the LSP then refreshes the kernelspecs to the new path.
+   restart; for users who opted in, the LSP then refreshes the
+   kernelspecs to the new path.
 
 ## Submitting to the Zed extension registry
 
@@ -121,8 +131,10 @@ run `pnpm sort-extensions`, and open a PR. The submodule must point at the
 release tag whose `extension.toml` version matches the entry.
 
 Two things a reviewer is likely to raise, both answered above and in the
-README: the kernelspec writes (gated on Jupyter already being present,
-opt-out documented, uninstall provided), and the overlap with the existing
+README: the kernelspec writes (opt-in only, never on plain file open,
+uninstall provided — raised on
+[extensions#6990](https://github.com/zed-industries/extensions/pull/6990)
+against 0.3.0), and the overlap with the existing
 `rainbow-csv` extension, which ships the same grammar at the same commit
 for the same four languages. Zed's guidelines ask that extensions not
 duplicate what is already in the registry; the answer here is that a

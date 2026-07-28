@@ -136,9 +136,8 @@ impl zed::Extension for CsvToolkitExtension {
             None => self.language_server_binary_path(language_server_id, worktree)?,
         };
 
-        // `env` is how a user turns off the kernelspec install
-        // (CSV_LS_NO_KERNELSPECS=1); sorted because HashMap iteration order
-        // varies and Zed restarts a server whose command changed.
+        // Sorted because HashMap iteration order varies and Zed restarts a
+        // server whose command changed.
         let mut env: Vec<(String, String)> = binary
             .as_ref()
             .and_then(|b| b.env.clone())
@@ -152,6 +151,20 @@ impl zed::Extension for CsvToolkitExtension {
             args: binary.and_then(|b| b.arguments).unwrap_or_default(),
             env,
         })
+    }
+
+    /// Pass `lsp.csv-ls.initialization_options` through untouched. The
+    /// extension adds nothing of its own: the one option csv-ls reads,
+    /// `install_kernelspecs`, writes into the user's Jupyter data directory,
+    /// so it must come from the user's settings and nowhere else.
+    fn language_server_initialization_options(
+        &mut self,
+        _language_server_id: &LanguageServerId,
+        worktree: &zed::Worktree,
+    ) -> Result<Option<zed::serde_json::Value>> {
+        Ok(LspSettings::for_worktree(SERVER_BIN, worktree)
+            .ok()
+            .and_then(|settings| settings.initialization_options))
     }
 }
 
