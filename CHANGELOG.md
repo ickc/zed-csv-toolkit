@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.4.0
+
+### Changed
+
+- **The inline table view is now opt-in.** Starting the language server
+  no longer installs kernelspecs on its own — opening a CSV never writes
+  to your Jupyter data directory. Enable it with `{ "lsp": { "csv-ls": {
+  "initialization_options": { "install_kernelspecs": true } } } }` in
+  settings (the install then re-runs on every start, following the binary
+  across upgrades), or run `csv-ls install-kernelspecs` once. Raised in
+  registry review:
+  [zed-industries/extensions#6990](https://github.com/zed-industries/extensions/pull/6990)
+  — a Jupyter data directory is user-managed state outside the directory
+  Zed designates for the extension, and its already existing is not
+  consent to write there.
+
+  If you were relying on the automatic install, add the setting; existing
+  kernelspecs keep working either way.
+
+### Removed
+
+- `CSV_LS_NO_KERNELSPECS`: there is no longer an automatic install to
+  turn off.
+
 ## 0.3.0
 
 Preparation for the Zed extension registry.
